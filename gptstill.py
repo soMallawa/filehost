@@ -5,7 +5,6 @@ import logging
 import torch
 import datetime
 import requests
-import re
 from tqdm import tqdm
 from pinecone import Pinecone
 from sentence_transformers import SentenceTransformer
@@ -75,68 +74,35 @@ def save_checkpoint():
 
 # -------- HELPER FUNCTIONS --------
 def clean_text(text):
-    """Removes non-ASCII characters, emojis, trims text, and replaces 'kith.mp3' with 'Kithmini'."""
-    if text:
-        text = text.encode("ascii", "ignore").decode().strip()  # Remove non-ASCII characters
-        text = re.sub(r"kith\.mp3", "Kithmini", text, flags=re.IGNORECASE)  # Replace variations of 'kith.mp3'
-        text = re.sub(r"[^\w\s]", "", text)  # Remove emojis and special characters
-    return text
+    """Removes non-ASCII characters and trims text."""
+    return text.encode("ascii", "ignore").decode().strip()
 
 def generate_summary_id(day_str):
     """Generates a unique ID for a daily summary."""
     return f"summary_{day_str}"
 
-def query_ollama(messages, date, senders):
+def query_ollama(prompt):
     """
-    Sends a prompt to the Ollama LLM to generate a **detailed, romantic & time-aware** summary of the conversation.
+    Sends a prompt to the Ollama LLM and returns the summary.
     """
-    url = "http://localhost:11434/api/generate"  # Correct API endpoint
-
-    prompt = f"""
-    You are an AI that summarizes chat conversations in a **casual, slightly romantic storytelling style**, while keeping all key details intact. 
-    Your task is to create a **warm, engaging summary** of the following messages.
-
-    **Conversation Details:**
-    - **Date**: {date}
-    - **Participants**: {', '.join(senders)}
-    - **Messages** (with timestamps):
-
-    {messages}
-
-    **Summary Instructions:**
-    - Capture the **main topics** discussed.
-    - Include the **times of key moments** (e.g., "At 10:15 AM, Alex teasingly asked...").
-    - Preserve **dates, times, sender names, and emotions**.
-    - Highlight any **sweet, playful, or intimate moments** in a natural way.
-    - Indicate the **tone of the conversation** (e.g., lighthearted, affectionate, deep).
-    - Mention any **inside jokes, meaningful exchanges, or thoughtful gestures**.
-    - Keep it **genuine, not overly dramatic or forced**—just like reading an old text thread with a smile.
-
-    **Example Format:**
-    "On {date}, {', '.join(senders)} exchanged messages filled with warmth.  
-    At 09:30 AM, [Sender1] playfully teased [Sender2] about [funny topic], making them laugh.  
-    At 10:15 AM, [Sender2] shared something heartfelt about [topic], making the conversation take a more intimate turn.  
-    By 11:45 AM, they were reminiscing about [memory] and ended the chat with [a playful goodbye/a warm exchange/a promise to meet soon]."
-
-    Now, generate a **detailed, heartfelt summary** based on these messages.
-    """
+    url = "http://localhost:11434/api/generate"  # Corrected API endpoint
 
     payload = {
         "model": "deepseek-llm:7b",
         "prompt": prompt,
-        "max_tokens": 2048,
+        "max_tokens": 1024,
         "temperature": 0.7
     }
 
     try:
         start_time = time.time()
-        response = requests.post(url, json=payload, timeout=15)
+        response = requests.post(url, json=payload, timeout=10)
 
         if response.status_code == 200:
             result = response.json()
             elapsed_time = round(time.time() - start_time, 2)
             logging.info(f"✅ LLM response received in {elapsed_time} sec.")
-            return result.get("response", "").strip()  # Ensure clean output
+            return result.get("response", "")  # Adjusted key based on Ollama's response format
 
         logging.error(f"❌ LLM API returned status {response.status_code}: {response.text}")
         return ""
@@ -145,7 +111,7 @@ def query_ollama(messages, date, senders):
         logging.error(f"❌ Error calling LLM API: {e}")
         return ""
 
-# -------- EXECUTE SCRIPT --------
+# -------- MAIN PROCESSING FUNCTION --------
 def process_all_files():
     """
     Reads all JSON files, groups messages by day, and processes summaries efficiently.
@@ -173,17 +139,53 @@ def process_all_files():
                 timestamp = message.get("timestamp_ms", 0)
                 dt = datetime.datetime.fromtimestamp(timestamp / 1000)
                 day_str = dt.strftime("%Y-%m-%d")
-                time_str = dt.strftime("%I:%M %p")
+                time_str = dt.strftime("%H:%M:%S")
                 sender = clean_text(message.get("sender_name", ""))
                 content = clean_text(message.get("content", ""))
 
-                msg_info = f"At {time_str}, {sender} said: \"{content}\""
+                msg_info = f"[{time_str}] {sender}: {content}"
                 daily_messages.setdefault(day_str, []).append(msg_info)
                 daily_senders.setdefault(day_str, set()).add(sender)
         except Exception as e:
             logging.error(f"❌ Error processing file {file_path}: {e}")
 
-    logging.info("🎉 Processing completed.")
+    batch_vectors = []  
 
+    for day, msgs in tqdm(daily_messages.items(), desc="📅 Processing daily messages", unit="day"):
+        summary_id = generate_summary_id(day)
+        if summary_id in uploaded_message_ids:
+            logging.info(f"⏭️ Summary for {day} already processed, skipping.")
+            continue
+
+        senders_list = sorted(list(daily_senders.get(day, [])))
+        compiled_text = f"Date: {day}\nSenders: {', '.join(senders_list)}\nMessages:\n" + "\n".join(msgs)
+        
+        logging.info(f"📝 Generating summary for {day}...")
+        summary = query_ollama(f"Summarize the following messages:\n\n{compiled_text}")
+        if not summary:
+            logging.error(f"❌ LLM summarization failed for {day}")
+            continue
+
+        embedding = model.encode(summary, convert_to_tensor=True).cpu().numpy().tolist()  
+        vector = {"id": summary_id, "values": embedding, "metadata": {"date": day, "senders": senders_list, "summary": summary}}
+        batch_vectors.append(vector)
+
+        if len(batch_vectors) >= BATCH_SIZE:
+            index.upsert(batch_vectors)
+            for v in batch_vectors:
+                uploaded_message_ids.add(v["id"])
+            save_checkpoint()
+            batch_vectors = []  
+
+    if batch_vectors:
+        index.upsert(batch_vectors)
+        for v in batch_vectors:
+            uploaded_message_ids.add(v["id"])
+        save_checkpoint()
+
+    total_time = round(time.time() - start_time, 2)
+    logging.info(f"🎉 All processing completed in {total_time} seconds on RunPod.io.")
+
+# -------- EXECUTE SCRIPT --------
 if __name__ == "__main__":
     process_all_files()
