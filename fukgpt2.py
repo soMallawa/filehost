@@ -48,7 +48,7 @@ if PINECONE_INDEX_NAME not in existing_indexes:
         name=PINECONE_INDEX_NAME,
         dimension=VECTOR_DIMENSION,
         metric="cosine",
-        spec={"serverless": {"cloud": "aws", "region": PINECONE_REGION"}}
+        spec={"serverless": {"cloud": "aws", "region": PINECONE_REGION}}  # ✅ FIXED SYNTAX ERROR
     )
 
 index = pc.Index(PINECONE_INDEX_NAME)
