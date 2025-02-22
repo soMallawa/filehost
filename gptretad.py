@@ -145,12 +145,12 @@ def query_ollama(messages, date, senders):
         logging.error(f"❌ Error calling LLM API: {e}")
         return ""
 
-# -------- MAIN PROCESSING FUNCTION --------
+# -------- EXECUTE SCRIPT --------
 def process_all_files():
     """
     Reads all JSON files, groups messages by day, and processes summaries efficiently.
     """
-    logging.info("🔄 Starting processing of all files...")
+    logging.info("🔄 Starting processing of all files on RunPod.io...")
     start_time = time.time()
 
     daily_messages = {}  
@@ -185,6 +185,5 @@ def process_all_files():
 
     logging.info("🎉 Processing completed.")
 
-# -------- EXECUTE SCRIPT --------
 if __name__ == "__main__":
     process_all_files()
