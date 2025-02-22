@@ -6,7 +6,7 @@ import torch
 import datetime
 import ollama  # Import Ollama package
 from tqdm import tqdm
-from pinecone import Pinecone  # Corrected Pinecone import
+from pinecone.grpc import PineconeGRPC as Pinecone  # Corrected Pinecone import
 from sentence_transformers import SentenceTransformer
 from transformers import AutoTokenizer
 from logging.handlers import RotatingFileHandler
@@ -15,7 +15,7 @@ from logging.handlers import RotatingFileHandler
 DIRECTORY_PATH = "/root/messages"
 CHECKPOINT_FILE = "resume_checkpoint.json"
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY", "pcsk_3eBUzc_GmdvFhHndN4zAXejwE715zbC99jhjLyxjgn9Dxwdxc5Fwq4yBPQCBKKXsUqKzzP")
-PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "mmchat_final")
+PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "mmcahtfinal")
 PINECONE_REGION = "us-east-1"
 BATCH_SIZE = 50
 CHUNK_SIZE = 512
@@ -37,13 +37,23 @@ logging.info(f"🚀 Running on GPU device: {DEVICE}")
 
 # -------- INITIALIZE PINECONE --------
 logging.info("🔄 Initializing Pinecone...")
-pc = Pinecone(api_key=PINECONE_API_KEY)
+pc = Pinecone(api_key=PINECONE_API_KEY, environment=PINECONE_REGION)
 
 def initialize_pinecone():
     """Initializes Pinecone connection and creates an index if needed."""
     if PINECONE_INDEX_NAME not in pc.list_indexes():
         logging.info(f"✅ Creating Pinecone index: {PINECONE_INDEX_NAME}")
-        pc.create_index(PINECONE_INDEX_NAME, spec={"serverless": {"cloud": "aws", "region": PINECONE_REGION}, "dimension": 512, "metric": "cosine"})
+        pc.create_index(
+        name=PINECONE_INDEX_NAME,
+        dimension=512,
+        metric="cosine",
+        spec={
+            "serverless": {
+                "cloud": "aws",
+                "region": PINECONE_REGION
+            }
+        }
+    )
     
     return pc.Index(PINECONE_INDEX_NAME)
 
