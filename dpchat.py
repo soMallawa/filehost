@@ -11,13 +11,11 @@ from sentence_transformers import SentenceTransformer
 from transformers import AutoTokenizer
 from logging.handlers import RotatingFileHandler
 
-#Edit tag 1
-
 # -------- CONFIGURATION --------
 DIRECTORY_PATH = "/root/messages"
 CHECKPOINT_FILE = "resume_checkpoint.json"
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY", "pcsk_3eBUzc_GmdvFhHndN4zAXejwE715zbC99jhjLyxjgn9Dxwdxc5Fwq4yBPQCBKKXsUqKzzP")
-PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "mmachatv1")
+PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "mmchat_final")
 PINECONE_REGION = "us-east-1"
 BATCH_SIZE = 50
 CHUNK_SIZE = 512
@@ -45,7 +43,7 @@ def initialize_pinecone():
     """Initializes Pinecone connection and creates an index if needed."""
     if PINECONE_INDEX_NAME not in pc.list_indexes():
         logging.info(f"✅ Creating Pinecone index: {PINECONE_INDEX_NAME}")
-        pc.create_index(PINECONE_INDEX_NAME, spec={"dimension": 512, "metric": "cosine"})
+        pc.create_index(PINECONE_INDEX_NAME, spec={"serverless": {"cloud": "aws", "region": PINECONE_REGION}, "dimension": 512, "metric": "cosine"})
     
     return pc.Index(PINECONE_INDEX_NAME)
 
