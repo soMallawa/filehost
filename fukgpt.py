@@ -83,29 +83,38 @@ def generate_summary_id(day_str):
 
 def query_ollama(prompt):
     """
-    Sends a prompt to the Ollama LLM and returns the summary.
+    Sends a prompt to the Ollama LLM and returns a non-streaming summary response.
     """
-    url = "http://localhost:11434/api/generate"  # Corrected API endpoint
+    url = "http://localhost:11434/api/generate"  # Correct API endpoint
 
     payload = {
         "model": "deepseek-llm:7b",
         "prompt": prompt,
         "max_tokens": 1024,
-        "temperature": 0.7
+        "temperature": 0.7,
+        "stream": False  # 🚀 Disable streaming
     }
 
     try:
         start_time = time.time()
-        response = requests.post(url, json=payload, timeout=10)
+        response = requests.post(url, json=payload, timeout=15)
 
-        if response.status_code == 200:
+        if response.status_code != 200:
+            logging.error(f"❌ LLM API returned status {response.status_code}: {response.text}")
+            return ""
+
+        # ✅ Ensure response is valid JSON
+        try:
             result = response.json()
-            elapsed_time = round(time.time() - start_time, 2)
-            logging.info(f"✅ LLM response received in {elapsed_time} sec.")
-            return result.get("response", "")  # Adjusted key based on Ollama's response format
+        except json.JSONDecodeError as e:
+            logging.error(f"❌ Invalid JSON from LLM API: {e}\nResponse: {response.text}")
+            return ""
 
-        logging.error(f"❌ LLM API returned status {response.status_code}: {response.text}")
-        return ""
+        elapsed_time = round(time.time() - start_time, 2)
+        logging.info(f"✅ LLM response received in {elapsed_time} sec.")
+
+        # ✅ Extract final response
+        return result.get("response", "").strip() if "response" in result else ""
 
     except requests.exceptions.RequestException as e:
         logging.error(f"❌ Error calling LLM API: {e}")
@@ -172,19 +181,16 @@ def process_all_files():
 
         if len(batch_vectors) >= BATCH_SIZE:
             index.upsert(batch_vectors)
-            for v in batch_vectors:
-                uploaded_message_ids.add(v["id"])
+            uploaded_message_ids.update([v["id"] for v in batch_vectors])
             save_checkpoint()
             batch_vectors = []  
 
     if batch_vectors:
         index.upsert(batch_vectors)
-        for v in batch_vectors:
-            uploaded_message_ids.add(v["id"])
+        uploaded_message_ids.update([v["id"] for v in batch_vectors])
         save_checkpoint()
 
-    total_time = round(time.time() - start_time, 2)
-    logging.info(f"🎉 All processing completed in {total_time} seconds on RunPod.io.")
+    logging.info(f"🎉 All processing completed in {round(time.time() - start_time, 2)} seconds.")
 
 # -------- EXECUTE SCRIPT --------
 if __name__ == "__main__":
