@@ -22,7 +22,7 @@ os.environ.setdefault("UNSLOTH_RETURN_LOGITS", "1")  # Disable CCE for CPT
 DTYPE = "bfloat16" if torch.cuda.is_bf16_supported() else "float16"
 DEVICE = "cuda"
 
-MODEL_NAME = os.getenv("MODEL_NAME", "unsloth/gemma-3-4b-it")  # IT checkpoint
+MODEL_NAME = os.getenv("MODEL_NAME", "unsloth/gemma-3-12b-it")  # IT checkpoint
 MAX_SEQ_LENGTH = int(os.getenv("MAX_SEQ_LENGTH", "4096"))
 LOAD_IN_4BIT = os.getenv("LOAD_IN_4BIT", "true").lower() in ("1","true","yes")
 
@@ -37,7 +37,7 @@ LR = float(os.getenv("LR", "5e-5"))
 EMB_LR = float(os.getenv("EMB_LR", "1e-5"))
 
 # Data fraction for CPT
-TRAIN_FRACTION = float(os.getenv("TRAIN_FRACTION", "0.25"))  # 25% by default
+TRAIN_FRACTION = float(os.getenv("TRAIN_FRACTION", "0.50"))  # 25% by default
 
 # Optimizer and LoRA
 OPTIM = os.getenv("OPTIM", "adamw_torch_fused")
